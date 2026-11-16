@@ -2,7 +2,7 @@
 
 Upload bank and credit card statements, get every transaction labelled with a category and an owner (Personal or Business), and answer questions only about the payees the app cannot work out. Each answer is saved as a rule.
 
-Everything runs on your computer. The data is one SQLite file in `data/finance.db`; there is no cloud database.
+Data lives in a [Turso](https://turso.tech) database (libSQL, SQLite-compatible). With no Turso settings the app uses a local file in `data/finance.db`, so it also runs on your own computer with nothing to set up.
 
 ## Run it
 
@@ -27,7 +27,7 @@ For development with live reload, use `npm run dev`.
 | `icici-current-sample.csv` | ICICI Current |
 | `hdfc-card-sample.csv` | HDFC Credit Card 1 |
 
-To start again from empty, stop the app and delete the `data/` folder.
+To start again from empty with the local file, stop the app and delete the `data/` folder.
 
 ## Keys
 
@@ -78,3 +78,20 @@ The UPI handle (`@ybl`, `@okaxis`) is never used to decide personal vs business,
 - The Jev and Sonnet calls follow the published API shapes but have not been run against live keys in this build.
 - Spend charts count `spend` transactions only. Refunds are shown separately and are not netted against the category.
 - Password-protected or PDF statements are not supported. Export Excel or CSV from netbanking.
+
+## Database and deploying
+
+1. Create a database at turso.tech (or with the CLI: `turso db create finance-dashboard`).
+2. Copy its URL (`libsql://...`) and create a token (`turso db tokens create finance-dashboard`).
+3. Set these environment variables on your host:
+
+| Variable | Value |
+| --- | --- |
+| `TURSO_DATABASE_URL` | the `libsql://...` URL |
+| `TURSO_AUTH_TOKEN` | the token |
+| `APP_PASSWORD` | a password for the browser prompt. Set this on any public deployment |
+| `TYPESAFE_API_KEY`, `ANTHROPIC_API_KEY` | optional, see Keys |
+
+Tables and the starting categories and accounts are created automatically on the first request. Nothing else to run.
+
+Uploads call the models while the request is open, so a big statement can take a minute. The upload and reclassify routes ask the host for up to 300 seconds.

@@ -14,8 +14,11 @@ export const GET = handle(async (req: Request) => {
   const page = Math.max(1, Number(sp.get("page")) || 1);
   const size = 50;
   const d = db();
-  const summary = d.prepare(`SELECT COUNT(*) total, COALESCE(SUM(t.amount),0) amount ${TXN_FROM} ${f.sql}`).get(...f.args) as { total: number; amount: number };
-  const rows = d.prepare(`${SELECT_TXN} ${TXN_FROM} ${f.sql} ORDER BY t.txn_date DESC, t.id DESC LIMIT ? OFFSET ?`).all(...f.args, size, (page - 1) * size);
+  const [summaryRow, rows] = await Promise.all([
+    d.prepare(`SELECT COUNT(*) total, COALESCE(SUM(t.amount),0) amount ${TXN_FROM} ${f.sql}`).get<{ total: number; amount: number }>(...f.args),
+    d.prepare(`${SELECT_TXN} ${TXN_FROM} ${f.sql} ORDER BY t.txn_date DESC, t.id DESC LIMIT ? OFFSET ?`).all(...f.args, size, (page - 1) * size),
+  ]);
+  const summary = summaryRow!;
   return ok({ rows, total: summary.total, amount: summary.amount, page, pages: Math.max(1, Math.ceil(summary.total / size)) });
 });
 
@@ -27,6 +30,6 @@ export const PATCH = handle(async (req: Request) => {
   if (body.category_id) patch.category_id = Number(body.category_id);
   if (body.owner === "personal" || body.owner === "business") patch.owner = body.owner;
   if (typeof body.note === "string") patch.note = body.note;
-  updateTransactions(ids, patch);
+  await updateTransactions(ids, patch);
   return ok({ updated: ids.length });
 });

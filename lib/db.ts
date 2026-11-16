@@ -1,7 +1,12 @@
-import Database from "better-sqlite3";
+import { createClient, type Client, type ResultSet } from "@libsql/client";
 import fs from "fs";
 import path from "path";
 import { SEED_ACCOUNTS, SEED_CATEGORIES } from "./seed";
+
+/*
+ * Storage is libSQL: a Turso database in production (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN),
+ * or a local SQLite file when those are not set, so `npm run dev` works with no account.
+ */
 
 const DATA_DIR = process.env.DATA_DIR || path.join(process.cwd(), "data");
 
@@ -99,43 +104,122 @@ CREATE TABLE IF NOT EXISTS settings (
 );
 `;
 
-type G = typeof globalThis & { __financeDb?: Database.Database };
+/** One statement waiting to be sent, used to group many writes into a single round trip. */
+export type Q = { sql: string; args: unknown[] };
+export const q = (sql: string, ...args: unknown[]): Q => ({ sql, args });
 
-export function db(): Database.Database {
+type Arg = string | number | null | Uint8Array;
+const norm = (args: unknown[]): Arg[] =>
+  args.map((a) => (a === undefined || a === null ? null : typeof a === "boolean" ? (a ? 1 : 0) : (a as Arg)));
+
+function rowsOf(rs: ResultSet): Record<string, unknown>[] {
+  return rs.rows.map((r) => {
+    const o: Record<string, unknown> = {};
+    rs.columns.forEach((c, i) => { o[c] = r[i]; });
+    return o;
+  });
+}
+
+type State = { client: Client; ready: Promise<void> };
+type G = typeof globalThis & { __financeDb?: State };
+
+function connect(): State {
+  const url = process.env.TURSO_DATABASE_URL || "";
+  let client: Client;
+  if (url) {
+    client = createClient({ url, authToken: process.env.TURSO_AUTH_TOKEN || undefined });
+  } else {
+    fs.mkdirSync(DATA_DIR, { recursive: true });
+    client = createClient({ url: `file:${path.join(DATA_DIR, "finance.db")}` });
+  }
+  const ready = (async () => {
+    if (!url) await client.execute("PRAGMA foreign_keys = ON");
+    await client.executeMultiple(SCHEMA);
+    await seed(client);
+  })();
+  return { client, ready };
+}
+
+async function seed(client: Client) {
+  const count = async (table: string) => Number((await client.execute(`SELECT COUNT(*) c FROM ${table}`)).rows[0][0]);
+  if ((await count("categories")) === 0) {
+    await client.batch(
+      SEED_CATEGORIES.map((c, i) => ({
+        sql: "INSERT INTO categories (name, grp, is_spend, sort) VALUES (?,?,?,?)",
+        args: [c.name, c.grp, c.is_spend ? 1 : 0, i],
+      })),
+      "write",
+    );
+  }
+  if ((await count("accounts")) === 0) {
+    await client.batch(
+      SEED_ACCOUNTS.map((a) => ({
+        sql: "INSERT INTO accounts (name, bank, type, default_owner) VALUES (?,?,?,?)",
+        args: [a.name, a.bank, a.type, a.default_owner],
+      })),
+      "write",
+    );
+  }
+}
+
+async function ready(): Promise<Client> {
   const g = globalThis as G;
-  if (g.__financeDb) return g.__financeDb;
-  fs.mkdirSync(DATA_DIR, { recursive: true });
-  const conn = new Database(path.join(DATA_DIR, "finance.db"));
-  conn.pragma("journal_mode = WAL");
-  conn.pragma("foreign_keys = ON");
-  conn.exec(SCHEMA);
-  seed(conn);
-  g.__financeDb = conn;
-  return conn;
+  if (!g.__financeDb) g.__financeDb = connect();
+  const s = g.__financeDb;
+  try {
+    await s.ready;
+  } catch (e) {
+    // A bad URL or token should not stick: let the next request try again.
+    if (g.__financeDb === s) g.__financeDb = undefined;
+    throw e;
+  }
+  return s.client;
 }
 
-function seed(conn: Database.Database) {
-  const catCount = (conn.prepare("SELECT COUNT(*) c FROM categories").get() as { c: number }).c;
-  if (catCount === 0) {
-    const ins = conn.prepare("INSERT INTO categories (name, grp, is_spend, sort) VALUES (?,?,?,?)");
-    SEED_CATEGORIES.forEach((c, i) => ins.run(c.name, c.grp, c.is_spend ? 1 : 0, i));
+const BATCH_SIZE = 400;
+
+export class Db {
+  /** Same shape as the old synchronous API, but every call is awaited. */
+  prepare(sql: string) {
+    return {
+      get: async <T = unknown>(...args: unknown[]): Promise<T | undefined> => {
+        const rs = await (await ready()).execute({ sql, args: norm(args) });
+        return rowsOf(rs)[0] as T | undefined;
+      },
+      all: async <T = unknown>(...args: unknown[]): Promise<T[]> => {
+        const rs = await (await ready()).execute({ sql, args: norm(args) });
+        return rowsOf(rs) as T[];
+      },
+      run: async (...args: unknown[]): Promise<{ changes: number; lastInsertRowid: number }> => {
+        const rs = await (await ready()).execute({ sql, args: norm(args) });
+        return { changes: rs.rowsAffected, lastInsertRowid: Number(rs.lastInsertRowid ?? 0) };
+      },
+    };
   }
-  const accCount = (conn.prepare("SELECT COUNT(*) c FROM accounts").get() as { c: number }).c;
-  if (accCount === 0) {
-    const ins = conn.prepare("INSERT INTO accounts (name, bank, type, default_owner) VALUES (?,?,?,?)");
-    SEED_ACCOUNTS.forEach((a) => ins.run(a.name, a.bank, a.type, a.default_owner));
+
+  /** Sends many writes at once. Each chunk of up to 400 statements succeeds or fails as a whole. */
+  async batch(stmts: Q[]): Promise<ResultSet[]> {
+    if (!stmts.length) return [];
+    const client = await ready();
+    const out: ResultSet[] = [];
+    for (let i = 0; i < stmts.length; i += BATCH_SIZE) {
+      const chunk = stmts.slice(i, i + BATCH_SIZE).map((s) => ({ sql: s.sql, args: norm(s.args) }));
+      out.push(...(await client.batch(chunk, "write")));
+    }
+    return out;
   }
 }
 
-export function getSetting(key: string, fallback = ""): string {
-  const row = db().prepare("SELECT value FROM settings WHERE key = ?").get(key) as { value: string } | undefined;
+const instance = new Db();
+export const db = () => instance;
+
+export async function getSetting(key: string, fallback = ""): Promise<string> {
+  const row = await db().prepare("SELECT value FROM settings WHERE key = ?").get<{ value: string }>(key);
   return row ? row.value : fallback;
 }
 
-export function setSetting(key: string, value: string) {
-  db()
+export async function setSetting(key: string, value: string) {
+  await db()
     .prepare("INSERT INTO settings (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value")
     .run(key, value);
 }
-
-export const DATA_PATH = DATA_DIR;
