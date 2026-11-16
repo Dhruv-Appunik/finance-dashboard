@@ -1,0 +1,62 @@
+export type Owner = "personal" | "business";
+
+export const SEED_CATEGORIES: { name: string; grp: string; is_spend: boolean; hint: string }[] = [
+  { name: "Rent and housing", grp: "Living", is_spend: true, hint: "Rent, maintenance, society charges, home repairs" },
+  { name: "Utilities and bills", grp: "Living", is_spend: true, hint: "Electricity, water, gas, mobile, internet, DTH" },
+  { name: "Groceries", grp: "Living", is_spend: true, hint: "Supermarkets, kirana stores, quick-commerce grocery delivery" },
+  { name: "Household help", grp: "Living", is_spend: true, hint: "Maid, cook, driver, cleaner wages" },
+  { name: "Food and dining", grp: "Lifestyle", is_spend: true, hint: "Restaurants, cafes, food delivery, snacks" },
+  { name: "Shopping", grp: "Lifestyle", is_spend: true, hint: "Clothing, electronics, online marketplaces, general retail" },
+  { name: "Entertainment and subscriptions", grp: "Lifestyle", is_spend: true, hint: "Streaming, movies, games, personal app subscriptions" },
+  { name: "Travel and transport", grp: "Lifestyle", is_spend: true, hint: "Cabs, flights, trains, hotels, tolls, parking" },
+  { name: "Fuel", grp: "Lifestyle", is_spend: true, hint: "Petrol pumps, EV charging" },
+  { name: "Health and medical", grp: "Lifestyle", is_spend: true, hint: "Doctors, hospitals, pharmacies, labs" },
+  { name: "Personal care", grp: "Lifestyle", is_spend: true, hint: "Salon, gym, spa" },
+  { name: "Education", grp: "Lifestyle", is_spend: true, hint: "School or course fees, books" },
+  { name: "Family support", grp: "Family and giving", is_spend: true, hint: "Money sent to family members" },
+  { name: "Gifts and donations", grp: "Family and giving", is_spend: true, hint: "Gifts, charity, temple donations" },
+  { name: "Loan EMI", grp: "Money", is_spend: true, hint: "Home, car, personal or business loan instalments" },
+  { name: "Credit card fees and interest", grp: "Money", is_spend: true, hint: "Card annual fees, late fees, finance charges" },
+  { name: "Bank charges", grp: "Money", is_spend: true, hint: "Account fees, SMS charges, GST on charges" },
+  { name: "Insurance", grp: "Money", is_spend: true, hint: "Life, health, vehicle insurance premiums" },
+  { name: "Investments", grp: "Money", is_spend: false, hint: "Mutual funds, stocks, FD, PPF, NPS" },
+  { name: "Taxes", grp: "Money", is_spend: true, hint: "Income tax, GST payments, TDS, property tax" },
+  { name: "Salaries and contractors", grp: "Business", is_spend: true, hint: "Staff salaries, freelancer and contractor payouts" },
+  { name: "Software and cloud", grp: "Business", is_spend: true, hint: "SaaS tools, cloud hosting, AI APIs, domains" },
+  { name: "Marketing and ads", grp: "Business", is_spend: true, hint: "Ad platforms, lead tools, sponsorships" },
+  { name: "Office and equipment", grp: "Business", is_spend: true, hint: "Office rent, coworking, hardware, supplies" },
+  { name: "Professional fees", grp: "Business", is_spend: true, hint: "CA, legal, consultants, company filings" },
+  { name: "Client refunds", grp: "Business", is_spend: true, hint: "Money returned to clients" },
+  { name: "Client revenue", grp: "Income", is_spend: false, hint: "Payments received from clients or payment gateways" },
+  { name: "Salary or drawings", grp: "Income", is_spend: false, hint: "Salary credited, or drawings taken from the business" },
+  { name: "Interest and dividends", grp: "Income", is_spend: false, hint: "Bank interest, dividends" },
+  { name: "Other income", grp: "Income", is_spend: false, hint: "Any other money received" },
+  { name: "Own-account transfer", grp: "Non-spend", is_spend: false, hint: "Movement between the user's own accounts" },
+  { name: "Card bill payment", grp: "Non-spend", is_spend: false, hint: "Paying a credit card bill" },
+  { name: "Cash withdrawal", grp: "Non-spend", is_spend: false, hint: "ATM or branch cash withdrawal" },
+  { name: "Refund received", grp: "Non-spend", is_spend: false, hint: "Refund or reversal of an earlier payment" },
+  { name: "Uncategorised", grp: "Fallback", is_spend: true, hint: "Use only when nothing else fits" },
+];
+
+export const SEED_ACCOUNTS: { name: string; bank: string; type: "savings" | "current" | "credit_card"; default_owner: Owner }[] = [
+  { name: "HDFC Savings", bank: "HDFC", type: "savings", default_owner: "personal" },
+  { name: "HDFC Current", bank: "HDFC", type: "current", default_owner: "business" },
+  { name: "ICICI Savings", bank: "ICICI", type: "savings", default_owner: "personal" },
+  { name: "ICICI Current", bank: "ICICI", type: "current", default_owner: "business" },
+  { name: "Bank of Baroda Savings", bank: "Bank of Baroda", type: "savings", default_owner: "personal" },
+  { name: "HDFC Credit Card 1", bank: "HDFC", type: "credit_card", default_owner: "personal" },
+  { name: "HDFC Credit Card 2", bank: "HDFC", type: "credit_card", default_owner: "personal" },
+  { name: "ICICI Credit Card 1", bank: "ICICI", type: "credit_card", default_owner: "personal" },
+  { name: "ICICI Credit Card 2", bank: "ICICI", type: "credit_card", default_owner: "personal" },
+  { name: "RBL Credit Card", bank: "RBL", type: "credit_card", default_owner: "personal" },
+  { name: "IDFC Credit Card", bank: "IDFC", type: "credit_card", default_owner: "personal" },
+];
+
+/** Category name to flow type for the categories that are not ordinary spend. */
+export const FLOW_BY_CATEGORY: Record<string, string> = {
+  "Own-account transfer": "transfer_own",
+  "Card bill payment": "card_bill_payment",
+  "Cash withdrawal": "cash_withdrawal",
+  "Refund received": "refund",
+  Investments: "investment",
+};

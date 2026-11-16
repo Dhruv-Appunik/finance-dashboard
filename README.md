@@ -1,36 +1,80 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Finance Dashboard
 
-## Getting Started
+Upload bank and credit card statements, get every transaction labelled with a category and an owner (Personal or Business), and answer questions only about the payees the app cannot work out. Each answer is saved as a rule.
 
-First, run the development server:
+Everything runs on your computer. The data is one SQLite file in `data/finance.db`; there is no cloud database.
+
+## Run it
+
+Needs Node.js 20 or newer.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local   # then add your keys, all optional
+npm run build
+npm start                    # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+For development with live reload, use `npm run dev`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Try it with sample data
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+`samples/` has three made-up statements (not real data). On the Upload page:
 
-## Learn More
+| File | Upload to |
+| --- | --- |
+| `hdfc-savings-sample.csv` | HDFC Savings |
+| `icici-current-sample.csv` | ICICI Current |
+| `hdfc-card-sample.csv` | HDFC Credit Card 1 |
 
-To learn more about Next.js, take a look at the following resources:
+To start again from empty, stop the app and delete the `data/` folder.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Keys
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+| Key | What it adds | Without it |
+| --- | --- | --- |
+| `TYPESAFE_API_KEY` | Jev picks a category and owner for payees with no rule | Those payees go to Questions |
+| `ANTHROPIC_API_KEY` | Sonnet reviews what Jev is unsure about, and maps statement layouts the built-in reader cannot | Unsure payees go to Questions; unusual layouts fail with a message |
 
-## Deploy on Vercel
+With no keys the app still works: automatic checks, your rules and the known-merchant list run, and the rest becomes questions.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Only payee names, UPI IDs, amounts, narration text and account names are sent to the model APIs. Full account numbers are never stored or sent.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## How sorting works
+
+For each transaction, in order:
+
+1. **Automatic checks.** Card bill payments, ATM withdrawals, bank charges, interest, refunds, and transfers between your own accounts (by your names in Settings, or by an equal and opposite entry in another account within two days).
+2. **Your rules.** Saved whenever you answer a question with "Always" or an amount condition.
+3. **Known merchants.** About 85 patterns in `lib/merchants.ts`. Merchants used both ways (Swiggy, Amazon, Uber) get a category but the owner is still asked.
+4. **Jev, then Sonnet.** One request per payee, not per transaction. A result below the confidence bar (0.85 by default) becomes a question.
+
+The UPI handle (`@ybl`, `@okaxis`) is never used to decide personal vs business, and the paying account is only a weak default.
+
+## First-time setup
+
+1. **Settings → Accounts and cards.** Check the 11 accounts, add the last four digits, and fix the default owner if needed.
+2. **Settings → Your own names.** Add your name and your business name so transfers between your accounts are recognised.
+3. **Upload** one statement per account, then work through **Questions**.
+
+## Project layout
+
+| Path | What it holds |
+| --- | --- |
+| `lib/parse/statement.ts` | Reads Excel and CSV, finds the header row, extracts rows |
+| `lib/parse/narration.ts` | Pulls payee, UPI ID, reference, mode and note out of the narration |
+| `lib/pipeline.ts` | Ingest, dedupe, classification order, questions, rules |
+| `lib/llm.ts` | TypeSafe Jev and Claude Sonnet calls |
+| `lib/merchants.ts` | Known-merchant list |
+| `lib/seed.ts` | Starting categories and accounts |
+| `app/api/*` | JSON endpoints |
+| `app/*/page.tsx` | Dashboard, Upload, Questions, Transactions, Settings |
+| `components/ui/*` | shadcn-style components |
+| `scripts/smoke.ts` | `npx tsx scripts/smoke.ts` loads the samples into a scratch database and prints the result |
+
+## Known limits
+
+- The statement reader has been tested on the sample layouts only. Real exports from each bank may need small changes to the header patterns in `lib/parse/statement.ts` or the narration rules in `lib/parse/narration.ts`.
+- The Jev and Sonnet calls follow the published API shapes but have not been run against live keys in this build.
+- Spend charts count `spend` transactions only. Refunds are shown separately and are not netted against the category.
+- Password-protected or PDF statements are not supported. Export Excel or CSV from netbanking.
