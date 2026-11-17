@@ -6,7 +6,8 @@ import { PageHeader } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Label, Notice, Select } from "@/components/ui/form";
-import { notifyChanged, useData, type Meta } from "@/lib/client";
+import { Trash2 } from "lucide-react";
+import { api, notifyChanged, useData, type Meta } from "@/lib/client";
 import { cn, dateLabel, monthLabel } from "@/lib/utils";
 
 type UploadData = {
@@ -36,6 +37,7 @@ export default function UploadPage() {
   const { data, reload } = useData<UploadData>("/api/upload");
   const [accountId, setAccountId] = useState("");
   const [busy, setBusy] = useState(false);
+  const [deleting, setDeleting] = useState<number | null>(null);
   const [result, setResult] = useState<Result | null>(null);
   const [error, setError] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -66,6 +68,21 @@ export default function UploadPage() {
       setError((err as Error).message);
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function remove(u: UploadData["uploads"][number]) {
+    const n = u.added_count;
+    if (!window.confirm(`Delete "${u.file_name}" and the ${n} transaction${n === 1 ? "" : "s"} it added? This cannot be undone.`)) return;
+    setDeleting(u.id); setError(null); setResult(null);
+    try {
+      await api(`/api/upload?id=${u.id}`, { method: "DELETE" });
+      reload();
+      notifyChanged();
+    } catch (err) {
+      setError((err as Error).message);
+    } finally {
+      setDeleting(null);
     }
   }
 
@@ -144,8 +161,12 @@ export default function UploadPage() {
                 {data.uploads.map((u) => (
                   <li key={u.id} className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-0.5 border-t py-2 first:border-t-0">
                     <span className="min-w-0"><span className="font-medium">{u.account}</span> <span className="break-all text-muted-foreground">· {u.file_name}</span></span>
-                    <span className="text-xs text-muted-foreground tabular">
-                      {u.period_start && `${dateLabel(u.period_start)} to ${dateLabel(u.period_end)} · `}{u.added_count} added, {u.duplicate_count} skipped
+                    <span className="flex items-center gap-3 text-xs text-muted-foreground tabular">
+                      <span>{u.period_start && `${dateLabel(u.period_start)} to ${dateLabel(u.period_end)} · `}{u.added_count} added, {u.duplicate_count} skipped</span>
+                      <Button type="button" variant="ghost" size="sm" disabled={deleting === u.id} onClick={() => remove(u)}
+                        aria-label={`Delete ${u.file_name}`} className="text-destructive">
+                        <Trash2 className="size-4" />{deleting === u.id ? "Deleting…" : "Delete"}
+                      </Button>
                     </span>
                   </li>
                 ))}
