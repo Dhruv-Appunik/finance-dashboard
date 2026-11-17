@@ -142,10 +142,13 @@ function connect(): State {
 
 async function seed(client: Client) {
   const count = async (table: string) => Number((await client.execute(`SELECT COUNT(*) c FROM ${table}`)).rows[0][0]);
-  if ((await count("categories")) === 0) {
+  // Adds any seed category the database does not have yet, so new categories reach existing databases too.
+  const have = new Set((await client.execute("SELECT name FROM categories")).rows.map((r) => String(r[0])));
+  const missing = SEED_CATEGORIES.map((c, i) => ({ c, i })).filter(({ c }) => !have.has(c.name));
+  if (missing.length) {
     await client.batch(
-      SEED_CATEGORIES.map((c, i) => ({
-        sql: "INSERT INTO categories (name, grp, is_spend, sort) VALUES (?,?,?,?)",
+      missing.map(({ c, i }) => ({
+        sql: "INSERT OR IGNORE INTO categories (name, grp, is_spend, sort) VALUES (?,?,?,?)",
         args: [c.name, c.grp, c.is_spend ? 1 : 0, i],
       })),
       "write",
