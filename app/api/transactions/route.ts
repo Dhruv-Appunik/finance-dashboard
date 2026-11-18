@@ -4,7 +4,7 @@ import { updateTransactions } from "@/lib/pipeline";
 
 export const dynamic = "force-dynamic";
 
-const SELECT_TXN = `SELECT t.id, t.txn_date, t.amount, t.direction, t.narration_raw, t.mode, t.reference_no, t.note, t.display_name,
+const SELECT_TXN = `SELECT t.id, t.txn_date, t.amount, t.direction, t.narration_raw, t.mode, t.reference_no, t.note, t.display_name, t.name_source,
   t.category_id, c.name category, t.owner, t.flow_type, t.status, t.classified_by, t.confidence, t.reason,
   a.name account, a.default_owner, p.id payee_id, COALESCE(t.display_name, p.display_name) payee, p.display_name payee_original, p.upi_id`;
 
@@ -29,7 +29,8 @@ export const PATCH = handle(async (req: Request) => {
   if (typeof body.display_name === "string") {
     // An empty name clears the override and goes back to the payee's own name.
     const name = body.display_name.trim().slice(0, 120) || null;
-    await db().batch(ids.map((id: number) => q("UPDATE transactions SET display_name = ? WHERE id = ?", name, id)));
+    // A name you type is locked against AI; clearing it hands the row back to the AI button.
+    await db().batch(ids.map((id: number) => q("UPDATE transactions SET display_name = ?, name_source = ? WHERE id = ?", name, name ? "user" : null, id)));
     if (body.category_id === undefined && body.owner === undefined && typeof body.note !== "string") return ok({ updated: ids.length });
   }
   const patch: { category_id?: number; owner?: "personal" | "business"; note?: string } = {};

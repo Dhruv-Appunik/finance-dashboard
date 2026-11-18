@@ -75,6 +75,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   dedupe_hash TEXT NOT NULL UNIQUE,
   note TEXT,
   display_name TEXT,
+  name_source TEXT CHECK (name_source IN ('ai','user')),
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS txn_date ON transactions(txn_date);
@@ -139,6 +140,11 @@ function connect(): State {
     // Databases created before per-transaction names need the column added once.
     const cols = (await client.execute("PRAGMA table_info(transactions)")).rows.map((r) => String(r[1]));
     if (!cols.includes("display_name")) await client.execute("ALTER TABLE transactions ADD COLUMN display_name TEXT");
+    if (!cols.includes("name_source")) {
+      await client.execute("ALTER TABLE transactions ADD COLUMN name_source TEXT");
+      // Every name that exists before this column was typed by you.
+      await client.execute("UPDATE transactions SET name_source = 'user' WHERE display_name IS NOT NULL");
+    }
     await seed(client);
   })();
   return { client, ready };

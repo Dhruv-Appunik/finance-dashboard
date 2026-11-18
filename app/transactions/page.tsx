@@ -7,14 +7,14 @@ import { PageHeader } from "@/components/shell";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge, Input, Label, Notice, Select } from "@/components/ui/form";
-import { api, notifyChanged, useData, type Meta, type Owner } from "@/lib/client";
+import { api, generateNamesWithAI, notifyChanged, useData, type Meta, type Owner } from "@/lib/client";
 import { cn, dateLabel, formatINR, monthLabel } from "@/lib/utils";
 
 type Row = {
   id: number; txn_date: string; amount: number; direction: "debit" | "credit"; narration_raw: string; mode: string | null;
   note: string | null; category_id: number | null; category: string | null; owner: Owner | null; flow_type: string | null;
   status: "classified" | "needs_review" | "confirmed"; classified_by: string | null; reason: string | null;
-  account: string; default_owner: Owner; payee: string | null; payee_original: string | null; display_name: string | null; upi_id: string | null;
+  account: string; default_owner: Owner; payee: string | null; payee_original: string | null; display_name: string | null; name_source: "ai" | "user" | null; upi_id: string | null;
 };
 type List = { rows: Row[]; total: number; amount: number; page: number; pages: number };
 
@@ -35,6 +35,7 @@ function Transactions() {
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkOwner, setBulkOwner] = useState("");
   const [bulkName, setBulkName] = useState("");
+  const [naming, setNaming] = useState<string | null>(null);
   const [editing, setEditing] = useState<{ id: number; value: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -75,6 +76,16 @@ function Transactions() {
     setEditing(null);
     await patch([id], { display_name: value });
   }
+  async function nameWithAI(ids?: number[]) {
+    setError(null); setNaming("Naming…");
+    try {
+      const r = await generateNamesWithAI(ids, (n) => setNaming(`Naming… ${n} done`));
+      setNaming(r.done === 0 ? "Nothing to name" : `Named ${r.named} of ${r.done}`);
+      reload();
+    } catch (e) {
+      setNaming(null); setError((e as Error).message);
+    }
+  }
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const cross = sp.get("cross");
   const exportQuery = useMemo(() => { const p = new URLSearchParams(query); p.delete("page"); return p.toString(); }, [query]);
@@ -86,6 +97,9 @@ function Transactions() {
   return (
     <>
       <PageHeader title="Transactions" description={data ? `${data.total} transactions · ${formatINR(data.amount)} in this view` : undefined}>
+        {naming && <span className="text-xs text-muted-foreground" role="status">{naming}</span>}
+        <Button size="sm" variant="outline" disabled={!!naming && naming.startsWith("Naming…")} onClick={() => nameWithAI()}
+          title="Names every transaction that has no name or an AI name. Names you typed are kept.">Generate all names using AI</Button>
         <a href={`/api/transactions/export?${exportQuery}`} className={buttonVariants({ variant: "outline", size: "sm" })}>Export CSV</a>
       </PageHeader>
 
@@ -119,6 +133,8 @@ function Transactions() {
             await patch([...selected], body);
             setSelected(new Set()); setBulkName("");
           }}>Apply</Button>
+          <Button size="sm" variant="outline" disabled={!!naming && naming.startsWith("Naming…")} onClick={async () => { await nameWithAI([...selected]); }}
+            title="Skips names you typed yourself">Name with AI</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </Card>
       )}
@@ -144,6 +160,7 @@ function Transactions() {
                         <Pencil className="size-3 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
                       </button>
                     )}
+                    {r.name_source === "ai" && <Badge>AI name</Badge>}
                     {r.status === "needs_review" && <Badge tone="warn">Needs review</Badge>}
                     {r.flow_type && r.flow_type !== "spend" && <Badge>{FLOW[r.flow_type] || r.flow_type}</Badge>}
                     {crossPaid && <Badge>Cross-paid</Badge>}

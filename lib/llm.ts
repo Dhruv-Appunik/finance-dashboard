@@ -181,3 +181,32 @@ export async function sonnetColumnMap(rows: Cell[][]): Promise<ColumnMap> {
   );
   return MapSchema.parse(extractJson(text));
 }
+
+const NAME_SYSTEM = `You write short, clean display names for Indian bank and credit card transactions, so a statement reads at a glance.
+
+For each transaction return a name of at most 4 words (40 characters):
+- A merchant or person name in normal Title Case, e.g. "Swiggy", "Ramesh Kumar", "HPCL Petrol Pump", "Airtel Broadband".
+- Remove UPI IDs, handles, reference numbers, dates, bank codes and noise like "UPI-", "POS", "NEFT", "IMPS".
+- Use the payee name given when it is already clean. Fix obvious truncation or casing.
+- When there is no merchant, describe it plainly: "ATM Withdrawal", "Interest Credit", "Card Bill Payment", "Bank Charges", "Salary Credit".
+- Never invent a business that the narration does not support. If unsure, use the cleaned payee or a plain description.
+
+Return only a JSON array of {"id": <input id>, "name": "<name>"}, one per input, in the same order.`;
+
+const NameItem = z.object({ id: z.union([z.string(), z.number()]), name: z.string() });
+
+export type NameInput = { id: number; narration: string; payee: string | null; upi_id: string | null; mode: string | null; direction: string; amount: number };
+
+/** Sonnet writes a short display name for each transaction, in batches. */
+export async function sonnetNames(items: NameInput[]): Promise<Map<number, string>> {
+  const out = new Map<number, string>();
+  for (let i = 0; i < items.length; i += 40) {
+    const batch = items.slice(i, i + 40);
+    const parsed = z.array(NameItem).parse(extractJson(await claude(NAME_SYSTEM, `Transactions:\n${JSON.stringify(batch)}`, 4000)));
+    for (const it of parsed) {
+      const name = it.name.replace(/\s+/g, " ").trim().slice(0, 60);
+      if (name) out.set(Number(it.id), name);
+    }
+  }
+  return out;
+}

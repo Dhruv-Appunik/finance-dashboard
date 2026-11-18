@@ -5,7 +5,7 @@ import { PageHeader } from "@/components/shell";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, Input, Label, Notice, Select } from "@/components/ui/form";
-import { api, notifyChanged, useData, type AccountRow, type Meta } from "@/lib/client";
+import { api, generateNamesWithAI, notifyChanged, useData, type AccountRow, type Meta } from "@/lib/client";
 import { formatINR } from "@/lib/utils";
 
 type Manage = {
@@ -18,6 +18,32 @@ const SCOPE: Record<string, (n: number | null) => string> = {
   above_amount: (n) => `At or above ${formatINR(n || 0)}`,
   below_amount: (n) => `Below ${formatINR(n || 0)}`,
 };
+
+function NamesCard() {
+  const [status, setStatus] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  async function run() {
+    setBusy(true); setError(null); setStatus("Naming…");
+    try {
+      const r = await generateNamesWithAI(undefined, (n) => setStatus(`Naming… ${n} done`));
+      setStatus(r.done === 0 ? "Nothing to name." : `Named ${r.named} of ${r.done} transactions.`);
+    } catch (e) { setStatus(null); setError((e as Error).message); } finally { setBusy(false); }
+  }
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle>Transaction names</CardTitle>
+        <CardDescription>AI writes a short, clean name for each transaction. It only fills transactions with no name or an AI name. Any name you type yourself is locked and never changed by AI. Clear a name to hand it back to AI.</CardDescription>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-2">
+        <div><Button variant="outline" disabled={busy} onClick={run}>{busy ? "Working…" : "Generate all names using AI"}</Button></div>
+        {status && <p className="text-sm text-muted-foreground" role="status">{status}</p>}
+        {error && <Notice tone="error">{error}</Notice>}
+      </CardContent>
+    </Card>
+  );
+}
 
 function AccountEditor({ account, onSaved }: { account?: AccountRow; onSaved: () => void }) {
   const blank = { name: "", bank: "", type: "savings", last4: "", default_owner: "personal" };
@@ -101,6 +127,8 @@ export default function SettingsPage() {
             <div><Button variant="outline" disabled={busy} onClick={() => act({ action: "reclassify" })}>{busy ? "Working…" : "Re-sort everything not confirmed by you"}</Button></div>
           </CardContent>
         </Card>
+
+        <NamesCard />
 
         <Card>
           <CardHeader><CardTitle>Accounts and cards</CardTitle><CardDescription>The default owner is only a starting hint. Payee rules and your answers override it.</CardDescription></CardHeader>

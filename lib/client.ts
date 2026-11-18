@@ -50,3 +50,15 @@ export function useData<T>(url: string | null) {
 
 /** Tells the navigation badge to refresh after something changed the question count. */
 export const notifyChanged = () => window.dispatchEvent(new Event("finance:changed"));
+
+/** Names transactions with AI, one chunk per request, until every eligible row is done. Names you typed are never touched. */
+export async function generateNamesWithAI(ids?: number[], onProgress?: (done: number) => void) {
+  let after = 0, done = 0, named = 0;
+  for (;;) {
+    const r = await api<{ done: number; named: number; next: number | null }>("/api/names", { json: { ids, after } });
+    done += r.done; named += r.named;
+    onProgress?.(done);
+    if (r.next === null) return { done, named };
+    after = r.next;
+  }
+}
