@@ -22,6 +22,7 @@ export const hasClaude = () => !!process.env.ANTHROPIC_API_KEY;
 const JEV_URL = (process.env.TYPESAFE_BASE_URL || "https://api.typesafe.ai").replace(/\/+$/, "") + "/v1/systemone";
 const JEV_MODEL = process.env.TYPESAFE_MODEL || "jev-latest";
 const CLAUDE_MODEL = process.env.ANTHROPIC_MODEL || "claude-sonnet-5-5";
+const NAMING_MODEL = process.env.ANTHROPIC_NAMING_MODEL || "claude-haiku-5-5";
 
 async function postJson(url: string, headers: Record<string, string>, body: unknown, timeoutMs = 45000) {
   for (let attempt = 0; attempt < 3; attempt++) {
@@ -115,11 +116,11 @@ const ClaudeItem = z.object({
   reason: z.string().default(""),
 });
 
-async function claude(system: string, user: string, maxTokens = 8000): Promise<string> {
+async function claude(system: string, user: string, maxTokens = 8000, model = CLAUDE_MODEL): Promise<string> {
   const json = await postJson(
     "https://api.anthropic.com/v1/messages",
     { "x-api-key": process.env.ANTHROPIC_API_KEY!, "anthropic-version": "2023-06-01" },
-    { model: CLAUDE_MODEL, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] },
+    { model, max_tokens: maxTokens, system, messages: [{ role: "user", content: user }] },
     120000,
   );
   const text = (json.content || []).filter((b: { type: string }) => b.type === "text").map((b: { text: string }) => b.text).join("");
@@ -197,12 +198,12 @@ const NameItem = z.object({ id: z.union([z.string(), z.number()]), name: z.strin
 
 export type NameInput = { id: number; narration: string; payee: string | null; upi_id: string | null; mode: string | null; direction: string; amount: number };
 
-/** Sonnet writes a short display name for each transaction, in batches. */
+/** Haiku writes a short display name for each transaction, in batches. */
 export async function sonnetNames(items: NameInput[]): Promise<Map<number, string>> {
   const out = new Map<number, string>();
   for (let i = 0; i < items.length; i += 40) {
     const batch = items.slice(i, i + 40);
-    const parsed = z.array(NameItem).parse(extractJson(await claude(NAME_SYSTEM, `Transactions:\n${JSON.stringify(batch)}`, 4000)));
+    const parsed = z.array(NameItem).parse(extractJson(await claude(NAME_SYSTEM, `Transactions:\n${JSON.stringify(batch)}`, 4000, NAMING_MODEL)));
     for (const it of parsed) {
       const name = it.name.replace(/\s+/g, " ").trim().slice(0, 60);
       if (name) out.set(Number(it.id), name);
