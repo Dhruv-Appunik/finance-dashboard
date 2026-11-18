@@ -2,6 +2,7 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
+import { Pencil } from "lucide-react";
 import { PageHeader } from "@/components/shell";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -13,7 +14,7 @@ type Row = {
   id: number; txn_date: string; amount: number; direction: "debit" | "credit"; narration_raw: string; mode: string | null;
   note: string | null; category_id: number | null; category: string | null; owner: Owner | null; flow_type: string | null;
   status: "classified" | "needs_review" | "confirmed"; classified_by: string | null; reason: string | null;
-  account: string; default_owner: Owner; payee: string | null; upi_id: string | null;
+  account: string; default_owner: Owner; payee: string | null; payee_original: string | null; display_name: string | null; upi_id: string | null;
 };
 type List = { rows: Row[]; total: number; amount: number; page: number; pages: number };
 
@@ -33,6 +34,8 @@ function Transactions() {
   const [selected, setSelected] = useState<Set<number>>(new Set());
   const [bulkCategory, setBulkCategory] = useState("");
   const [bulkOwner, setBulkOwner] = useState("");
+  const [bulkName, setBulkName] = useState("");
+  const [editing, setEditing] = useState<{ id: number; value: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
 
   const query = useMemo(() => {
@@ -66,6 +69,12 @@ function Transactions() {
       setError((e as Error).message);
     }
   }
+  async function saveName() {
+    if (!editing) return;
+    const { id, value } = editing;
+    setEditing(null);
+    await patch([id], { display_name: value });
+  }
   const toggle = (id: number) => setSelected((s) => { const n = new Set(s); if (n.has(id)) n.delete(id); else n.add(id); return n; });
   const cross = sp.get("cross");
   const exportQuery = useMemo(() => { const p = new URLSearchParams(query); p.delete("page"); return p.toString(); }, [query]);
@@ -81,7 +90,7 @@ function Transactions() {
       </PageHeader>
 
       <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-6">
-        <div className="col-span-2"><Label htmlFor="q">Search</Label><Input id="q" placeholder="Payee, UPI ID, narration, note" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
+        <div className="col-span-2"><Label htmlFor="q">Search</Label><Input id="q" placeholder="Name, payee, UPI ID, narration, note" value={search} onChange={(e) => setSearch(e.target.value)} /></div>
         <div><Label htmlFor="m">Month</Label><Select id="m" value={sp.get("month") || "all"} onChange={(e) => setFilter("month", e.target.value)}><option value="all">All</option>{meta?.months.map((m) => <option key={m} value={m}>{monthLabel(m)}</option>)}</Select></div>
         <div><Label htmlFor="a">Account</Label><Select id="a" value={sp.get("account") || "all"} onChange={(e) => setFilter("account", e.target.value)}><option value="all">All</option>{meta?.accounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}</Select></div>
         <div><Label htmlFor="c">Category</Label><Select id="c" value={sp.get("category") || "all"} onChange={(e) => setFilter("category", e.target.value)}><option value="all">All</option>{categoryOptions}</Select></div>
@@ -103,7 +112,13 @@ function Transactions() {
           <span className="self-center text-sm font-medium">{selected.size} selected</span>
           <Select aria-label="Category for selected" className="w-48" value={bulkCategory} onChange={(e) => setBulkCategory(e.target.value)}><option value="">Category…</option>{categoryOptions}</Select>
           <Select aria-label="Owner for selected" className="w-36" value={bulkOwner} onChange={(e) => setBulkOwner(e.target.value)}><option value="">Owner…</option><option value="personal">Personal</option><option value="business">Business</option></Select>
-          <Button size="sm" disabled={!bulkCategory && !bulkOwner} onClick={async () => { await patch([...selected], { category_id: bulkCategory ? Number(bulkCategory) : undefined, owner: bulkOwner || undefined }); setSelected(new Set()); }}>Apply</Button>
+          <Input aria-label="Name for selected" className="w-44" placeholder="Name…" value={bulkName} onChange={(e) => setBulkName(e.target.value)} />
+          <Button size="sm" disabled={!bulkCategory && !bulkOwner && !bulkName.trim()} onClick={async () => {
+            const body: Record<string, unknown> = { category_id: bulkCategory ? Number(bulkCategory) : undefined, owner: bulkOwner || undefined };
+            if (bulkName.trim()) body.display_name = bulkName;
+            await patch([...selected], body);
+            setSelected(new Set()); setBulkName("");
+          }}>Apply</Button>
           <Button size="sm" variant="ghost" onClick={() => setSelected(new Set())}>Clear</Button>
         </Card>
       )}
@@ -118,7 +133,17 @@ function Transactions() {
                 <input type="checkbox" className="mt-1 h-4 w-4 md:mt-0" checked={selected.has(r.id)} onChange={() => toggle(r.id)} aria-label={`Select ${r.payee || "transaction"} on ${dateLabel(r.txn_date)}`} />
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
-                    <span className="truncate text-sm font-medium">{r.payee || "Unknown"}</span>
+                    {editing?.id === r.id ? (
+                      <Input autoFocus aria-label="Transaction name" className="h-8 max-w-64 text-sm" placeholder={r.payee_original || "Name"}
+                        value={editing.value} onChange={(e) => setEditing({ id: r.id, value: e.target.value })} onBlur={saveName}
+                        onKeyDown={(e) => { if (e.key === "Enter") saveName(); if (e.key === "Escape") setEditing(null); }} />
+                    ) : (
+                      <button type="button" title="Rename this transaction" onClick={() => setEditing({ id: r.id, value: r.display_name || r.payee || "" })}
+                        className="group inline-flex min-w-0 cursor-pointer items-center gap-1.5 text-left">
+                        <span className="truncate text-sm font-medium">{r.payee || "Unknown"}</span>
+                        <Pencil className="size-3 shrink-0 text-subtle opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" aria-hidden />
+                      </button>
+                    )}
                     {r.status === "needs_review" && <Badge tone="warn">Needs review</Badge>}
                     {r.flow_type && r.flow_type !== "spend" && <Badge>{FLOW[r.flow_type] || r.flow_type}</Badge>}
                     {crossPaid && <Badge>Cross-paid</Badge>}
@@ -129,6 +154,7 @@ function Transactions() {
                   <details className="mt-0.5 text-xs text-muted-foreground">
                     <summary className="cursor-pointer truncate">{r.note ? `“${r.note}”` : "Details"}</summary>
                     <div className="mt-1 break-all">{r.narration_raw}</div>
+                    {r.display_name && r.payee_original && <div>Payee: {r.payee_original}</div>}
                     {r.upi_id && <div className="break-all font-mono">{r.upi_id}</div>}
                     {r.reason && <div>{r.reason}</div>}
                   </details>

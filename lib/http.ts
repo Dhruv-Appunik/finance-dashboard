@@ -38,9 +38,9 @@ export function txnFilter(sp: URLSearchParams) {
   if (cross === "personal_from_business") where.push("t.flow_type = 'spend' AND t.owner = 'personal' AND a.default_owner = 'business'");
   const q = sp.get("q");
   if (q) {
-    where.push("(t.narration_raw LIKE ? OR p.display_name LIKE ? OR p.upi_id LIKE ? OR t.note LIKE ?)");
+    where.push("(t.narration_raw LIKE ? OR p.display_name LIKE ? OR p.upi_id LIKE ? OR t.note LIKE ? OR t.display_name LIKE ?)");
     const like = `%${q}%`;
-    args.push(like, like, like, like);
+    args.push(like, like, like, like, like);
   }
   return { sql: where.length ? `WHERE ${where.join(" AND ")}` : "", args };
 }

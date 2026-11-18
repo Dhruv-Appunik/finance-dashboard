@@ -74,6 +74,7 @@ CREATE TABLE IF NOT EXISTS transactions (
   linked_txn_id INTEGER,
   dedupe_hash TEXT NOT NULL UNIQUE,
   note TEXT,
+  display_name TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
 CREATE INDEX IF NOT EXISTS txn_date ON transactions(txn_date);
@@ -135,6 +136,9 @@ function connect(): State {
   const ready = (async () => {
     if (!url) await client.execute("PRAGMA foreign_keys = ON");
     await client.executeMultiple(SCHEMA);
+    // Databases created before per-transaction names need the column added once.
+    const cols = (await client.execute("PRAGMA table_info(transactions)")).rows.map((r) => String(r[1]));
+    if (!cols.includes("display_name")) await client.execute("ALTER TABLE transactions ADD COLUMN display_name TEXT");
     await seed(client);
   })();
   return { client, ready };

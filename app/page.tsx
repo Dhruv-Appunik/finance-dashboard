@@ -18,6 +18,8 @@ type Dashboard = {
   byCategory: { id: number; name: string; personal: number; business: number; total: number; n: number }[];
   trend: { month: string; personal: number; business: number }[];
   topPayees: { id: number; name: string; total: number; n: number }[];
+  incomeByCategory: { id: number; name: string; personal: number; business: number; total: number; n: number }[];
+  topIncomePayees: { id: number; name: string; total: number; n: number }[];
 };
 
 function Legend() {
@@ -219,6 +221,54 @@ export default function DashboardPage() {
                   </CardContent>
                 </Card>
               </div>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-2">
+              <Card>
+                <CardHeader className="flex-row items-start justify-between gap-2">
+                  <div><CardTitle>Income by category</CardTitle><CardDescription>Tap a row to see its transactions.</CardDescription></div>
+                  <Legend />
+                </CardHeader>
+                <CardContent>
+                  {data.incomeByCategory.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">No income in this view.</p>}
+                  <ul className="flex flex-col">
+                    {data.incomeByCategory.map((c) => {
+                      const maxInc = Math.max(1, ...data.incomeByCategory.map((x) => x.total));
+                      return (
+                        <li key={c.id}>
+                          <Link href={link({ category: String(c.id), flow: "income", owner })}
+                            title={`${c.n} transaction${c.n === 1 ? "" : "s"} · Personal ${formatINR(c.personal)} · Business ${formatINR(c.business)}`}
+                            className="grid grid-cols-[minmax(0,9.5rem)_1fr_auto] items-center gap-3 rounded-md px-1 py-1.5 hover:bg-accent">
+                            <span className="truncate text-sm">{c.name}</span>
+                            <span className="flex h-3 items-center gap-[2px]" aria-hidden>
+                              {c.personal > 0 && <span className="h-full bg-personal" style={{ width: `${(c.personal / maxInc) * 100}%`, borderRadius: c.business > 0 ? 0 : "0 4px 4px 0" }} />}
+                              {c.business > 0 && <span className="h-full bg-business" style={{ width: `${(c.business / maxInc) * 100}%`, borderRadius: "0 4px 4px 0" }} />}
+                            </span>
+                            <span className="text-sm font-medium tabular">{formatINR(c.total)}</span>
+                          </Link>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader><CardTitle>Top income sources</CardTitle></CardHeader>
+                <CardContent>
+                  <ul className="flex flex-col text-sm">
+                    {data.topIncomePayees.map((p) => (
+                      <li key={p.id}>
+                        <Link href={link({ payee: String(p.id), flow: "income" })} className="flex items-center justify-between gap-3 rounded-md px-1 py-1.5 hover:bg-accent">
+                          <span className="min-w-0 truncate">{p.name} <span className="text-xs text-muted-foreground">· {p.n}</span></span>
+                          <span className="font-medium tabular">{formatINR(p.total)}</span>
+                        </Link>
+                      </li>
+                    ))}
+                    {data.topIncomePayees.length === 0 && <li className="py-4 text-center text-muted-foreground">No income in this view.</li>}
+                  </ul>
+                </CardContent>
+              </Card>
             </div>
           </div>
         )

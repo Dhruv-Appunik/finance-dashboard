@@ -50,9 +50,25 @@ export const GET = handle(async (req: Request) => {
      GROUP BY p.id ORDER BY total DESC LIMIT 8`,
   );
 
-  const [totals, byCategory, trend, topPayees] = await Promise.all([
+  const incomeByCategoryQ = d.prepare(
+    `SELECT c.id, c.name,
+       COALESCE(SUM(CASE WHEN t.owner='personal' THEN t.amount END),0) personal,
+       COALESCE(SUM(CASE WHEN t.owner='business' THEN t.amount END),0) business,
+       SUM(t.amount) total, COUNT(*) n
+     ${TXN_FROM} ${and} t.flow_type='income'
+     GROUP BY c.id ORDER BY total DESC`,
+  );
+
+  const topIncomePayeesQ = d.prepare(
+    `SELECT p.id, p.display_name name, SUM(t.amount) total, COUNT(*) n
+     ${TXN_FROM} ${and} t.flow_type='income'
+     GROUP BY p.id ORDER BY total DESC LIMIT 8`,
+  );
+
+  const [totals, byCategory, trend, topPayees, incomeByCategory, topIncomePayees] = await Promise.all([
     totalsQ.get(...f.args), byCategoryQ.all(...f.args), trendQ.all(...tf.args), topPayeesQ.all(...f.args),
+    incomeByCategoryQ.all(...f.args), topIncomePayeesQ.all(...f.args),
   ]);
 
-  return ok({ totals, byCategory, trend, topPayees });
+  return ok({ totals, byCategory, trend, topPayees, incomeByCategory, topIncomePayees });
 });
