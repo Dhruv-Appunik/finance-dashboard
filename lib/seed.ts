@@ -42,6 +42,7 @@ export const SEED_CATEGORIES: { name: string; grp: string; is_spend: boolean; hi
   { name: "Card bill payment", grp: "Non-spend", is_spend: false, hint: "Paying a credit card bill" },
   { name: "Cash withdrawal", grp: "Non-spend", is_spend: false, hint: "ATM or branch cash withdrawal" },
   { name: "Refund received", grp: "Non-spend", is_spend: false, hint: "Refund or reversal of an earlier payment" },
+  { name: "Other expenses", grp: "Fallback", is_spend: true, hint: "Genuine expenses that fit no other category and are not worth a category of their own" },
   { name: "Uncategorised", grp: "Fallback", is_spend: true, hint: "Use only when nothing else fits" },
 ];
 
